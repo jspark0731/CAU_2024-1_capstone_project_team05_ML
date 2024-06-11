@@ -12,6 +12,7 @@ from basic_pitch.inference import predict_and_save
 from CorsConfig import app
 from database import SessionLocal
 from models import MLEntity
+from post_process import post_process
 
 class MLDto(BaseModel):
     id: int
@@ -48,6 +49,7 @@ async def getDto(mlDto: MLDto, db: Session = Depends(get_db)):
     logging.basicConfig(level=logging.DEBUG)
     logging.debug("Received DTO: %s", mlDto)
 
+    # mlDto.id 로 entity Id 식별.
     ml_row = db.query(MLEntity).filter(MLEntity.id == id).first()
 
     if not ml_row:
@@ -57,9 +59,11 @@ async def getDto(mlDto: MLDto, db: Session = Depends(get_db)):
     # spleeter의 결과 path 정의 (확장자 제거)
     spleeterOutputPath = f"/spleeter_output/{email}/{fileName.split('.')[0]}"
     basicPitchOutputPath = f"/basic_pitch_output/{email}/{fileName.split('.')[0]}"
+    musescoreOutputPath = f"musescore_output/{email}/{fileName.split('.')[0]}"
 
     ml_row.spleeter_output_path = spleeterOutputPath
     ml_row.basic_pitch_output_path = basicPitchOutputPath
+    ml_row.musescore_output_path = musescoreOutputPath
     db.commit()
 
     try:
@@ -79,6 +83,8 @@ async def getDto(mlDto: MLDto, db: Session = Depends(get_db)):
                 save_midi=True
             )
 
+
+
             return JSONResponse(status_code=200, content={"message": f"MIDI file generated successfully at {basicPitchOutputPath}"})
 
         except Exception as e:
@@ -93,5 +99,5 @@ async def getDto(mlDto: MLDto, db: Session = Depends(get_db)):
 
 if __name__ == "__main__":
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    os.environ["CUDA_VISIBLE_DEVICES"] = "" # gpu 사용시에는 0이나 1 같은 nvidia-smi해서 나온 결과의 gpu # 작성
     uvicorn.run(app, host="0.0.0.0", port=5000)

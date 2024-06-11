@@ -14,3 +14,4 @@ class MLEntity(Base):
     user_email = Column(String)  # ForeignKey 제거
     spleeter_output_path = Column(String)
     basic_pitch_output_path = Column(String)
+    musescore_output_path = Column(String)
