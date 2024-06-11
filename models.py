@@ -8,10 +8,9 @@ class MLEntity(Base):
 
     id = Column(INT, primary_key=True, autoincrement=True)
     model = Column(String)
-    instrumentType = Column(String)
-    fileName = Column(String)
-    filePath = Column(String)
-    userEmail = Column(String)  # ForeignKey 제거
-    generateSheet = Column(String)
-    spleeterOutputPath = Column(String)
-    basicPitchOutputPath = Column(String)
+    instrument_type = Column(String)
+    file_name = Column(String)
+    file_path = Column(String)
+    user_email = Column(String)  # ForeignKey 제거
+    spleeter_output_path = Column(String)
+    basic_pitch_output_path = Column(String)

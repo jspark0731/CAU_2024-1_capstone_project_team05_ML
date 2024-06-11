@@ -1,22 +1,17 @@
-import os
-import shutil
-import uvicorn
-from fastapi import FastAPI, HTTPException, Depends, Path
-from pydantic import BaseModel
-from fastapi.responses import JSONResponse
-from databases import SessionLocal
-from sqlalchemy.orm import Session
 import logging
+import os
 
+import uvicorn
+from fastapi import HTTPException, Depends
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 from spleeter.separator import Separator
 from basic_pitch.inference import predict_and_save
 
 from CorsConfig import app
-from database import engineconn
+from database import SessionLocal
 from models import MLEntity
-
-engine = engineconn()
-session = engine.sessionmaker()
 
 class MLDto(BaseModel):
     id: int
@@ -25,7 +20,6 @@ class MLDto(BaseModel):
     fileName: str
     filePath: str
     email: str
-    generateSheet: str
 
 def get_db():
     db = SessionLocal()
@@ -43,20 +37,30 @@ def get_db():
 #         upload_file.file.close()
 
 @app.post("/api/ml/getFile")
-async def getDto(mlDto: MLDto):
+async def getDto(mlDto: MLDto, db: Session = Depends(get_db)):
     id = mlDto.id
     model = mlDto.model
     instrumentType = mlDto.instrumentType
-    fileName = mlDto.fileName
+    fileName = mlDto.fileName # 확장자도 포함되어 있음
     inputFilePath = mlDto.filePath
     email = mlDto.email
-    generateSheet = mlDto.generateSheet
 
-    music_entry = db.query(MLEntity).filter(MLEntity.id == mlDto.id).first()
+    logging.basicConfig(level=logging.DEBUG)
+    logging.debug("Received DTO: %s", mlDto)
 
-    # spleeter의 결과 path 정의
-    spleeterOutputPath = f"/spleeter_output/{email}/{fileName}"
-    basicPitchOutputPath = f"/basic_pitch_output/{email}/{fileName}"
+    ml_row = db.query(MLEntity).filter(MLEntity.id == id).first()
+
+    if not ml_row:
+        logging.error(f"No MLEntity found with ID {mlDto.id}")
+        raise HTTPException(status_code=404, detail="MLEntity not found")
+
+    # spleeter의 결과 path 정의 (확장자 제거)
+    spleeterOutputPath = f"/spleeter_output/{email}/{fileName.split('.')[0]}"
+    basicPitchOutputPath = f"/basic_pitch_output/{email}/{fileName.split('.')[0]}"
+
+    ml_row.spleeter_output_path = spleeterOutputPath
+    ml_row.basic_pitch_output_path = basicPitchOutputPath
+    db.commit()
 
     try:
         if not os.path.exists(inputFilePath):
@@ -66,21 +70,17 @@ async def getDto(mlDto: MLDto):
             separator = Separator(f'spleeter:{model}')
             separator.separate_to_file(inputFilePath, spleeterOutputPath)
 
-            if generateSheet == "O":
-                instrumentFileName = "others.wav" if mlDto.instrumentType == "guitar" else f"{mlDto.instrumentType}.wav" # instrumentType이 guitar면 others.wav를 사용해야함.
-                basicPitchInputPath = os.path.join(spleeterOutputPath, instrumentFileName)
+            instrumentFileName = "others.wav" if instrumentType == "guitar" else f"{instrumentType}.wav" # instrumentType이 guitar면 others.wav를 사용해야함.
+            basicPitchInputPath = os.path.join(spleeterOutputPath, instrumentFileName)
 
-                predict_and_save(
-                    [basicPitchInputPath],
-                    basicPitchOutputPath,
-                    save_midi=True
-                )
-
-
-            else:
-                return JSONResponse(status_code=200, content={"message": f"File '{fileName}' processed successfully, results stored at {spleeterOutputPath}."})
+            predict_and_save(
+                [basicPitchInputPath],
+                basicPitchOutputPath,
+                save_midi=True
+            )
 
             return JSONResponse(status_code=200, content={"message": f"MIDI file generated successfully at {basicPitchOutputPath}"})
+
         except Exception as e:
             logging.exception("An unexpected error occurred during separation")
             return JSONResponse(status_code=500, content={"message": f"An error occurred during separation: {str(e)}"})
